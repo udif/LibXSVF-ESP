@@ -19,11 +19,15 @@
 // At boot it will attempt to connect as client.
 // If this attempt fails, it will become AP.
 // Same ssid/password apply for client and AP.
+#if 1
+#include "private.h"
+#else
 const char *ssid = "websvf";
 const char *password = "12345678";
 const char *hostName = "websvf"; // request local name when connected as client
 const char *http_username = "admin";
 const char *http_password = "admin";
+#endif
 
 
 // SKETCH BEGIN
