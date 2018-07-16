@@ -1,2 +1,7 @@
 .vscode
 private.h
+*.o
+*.d
+*.a
+xsvftool-gpio
+xsvftool-test
