@@ -54,36 +54,48 @@ enum xsvf_cmd {
 #define VAL_CLOSE )
 
 #define READ_BITS(_buf, _len) do {                                          \
-	unsigned char *_p = _buf; int _i;                                   \
-	for (_i=0; _i<(_len); _i+=8) {                                      \
+	static unsigned char *_p; static int _i = 0;  \
+	if (_i == 0) _p = (_buf); \
+	for (; _i<(_len); _i+=8) {                                      \
 		int tmp = LIBXSVF_HOST_GETBYTE();                           \
-		if (tmp < 0) {                                              \
+		if (tmp == -1) {                                              \
 			LIBXSVF_HOST_REPORT_ERROR("Unexpected EOF.");       \
 			goto error;                                         \
-		}                                                           \
-		*(_p++) = tmp;                                              \
-	}                                                                   \
+		} else if (tmp == -2) { \
+			rc = -2;                                            \
+		} else {                                                \
+		  *(_p++) = tmp;                                        \
+		} \
+	} \
+	_i = 0;                                                     \
 } while (0)
 
 #define READ_LONG() VAL_OPEN{                                               \
-	long _buf = 0; int _i;                                              \
-	for (_i=0; _i<4; _i++) {                                            \
+	static long _buf; static int _i = 0;                            \
+	if (_i == 0) _buf = 0; \
+	for (; _i<4; _i++) {                                            \
 		int tmp = LIBXSVF_HOST_GETBYTE();                           \
-		if (tmp < 0) {                                              \
+		if (tmp == -1) {                                              \
 			LIBXSVF_HOST_REPORT_ERROR("Unexpected EOF.");       \
 			goto error;                                         \
-		}                                                           \
-		_buf = _buf << 8 | tmp;                                     \
+		} else if (tmp == -2) { \
+			rc = -2;                                                           \
+		} else { \
+			_buf = _buf << 8 | tmp;                                     \
+		} \
 	}                                                                   \
+	_i = 0; \
 	_buf;                                                               \
 }VAL_CLOSE
 
 #define READ_BYTE() VAL_OPEN{                                               \
 	int _tmp = LIBXSVF_HOST_GETBYTE();                                  \
-	if (_tmp < 0) {                                                     \
+	if (_tmp == -1) {                                                     \
 		LIBXSVF_HOST_REPORT_ERROR("Unexpected EOF.");               \
 		goto error;                                                 \
-	}                                                                   \
+	} else if (_tmp == -2) {                                        \
+	  rc = -2; \
+	} \
 	_tmp;                                                               \
 }VAL_CLOSE
 
