@@ -279,7 +279,7 @@ static struct libxsvf_host h = {
 };
 
 
-#if 1
+#if defined(XSVFTOOL_TEST)
 int libxsvf_svf_packet_play(struct libxsvf_host *h);
 static int file_getbyte()
 {
@@ -436,7 +436,6 @@ int main(int argc, char *argv[])
 
 	return rc;
 }
-#endif
 
 #define STREAM_BUFFER_SIZE 1024
 static unsigned int stream_seed = 0;
@@ -500,3 +499,4 @@ int xsvftool_esp_svf_packet(int (*packet_getbyte)(), int index, int final, char 
   }
   return -1; // NULL file_getbyte pointer supplied
 }
+#endif

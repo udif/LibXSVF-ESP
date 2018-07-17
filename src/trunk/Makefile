@@ -24,7 +24,7 @@ AR = ar
 RANLIB = ranlib
 CC = gcc
 
-CFLAGS += -Wall -Os -ggdb -MD
+CFLAGS += -Wall -Os -ggdb -MD -DXSVFTOOL_TEST
 #CFLAGS += -Wextra -Wno-unused-parameter -Werror
 
 help:
