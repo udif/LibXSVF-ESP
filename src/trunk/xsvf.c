@@ -55,6 +55,7 @@ enum xsvf_cmd {
 
 #define READ_BITS(_buf, _len) do {                                          \
 	static unsigned char *_p; static int _i = 0;  \
+	rc = 0; \
 	if (_i == 0) _p = (_buf); \
 	for (; _i<(_len); _i+=8) {                                      \
 		int tmp = LIBXSVF_HOST_GETBYTE();                           \
@@ -63,15 +64,18 @@ enum xsvf_cmd {
 			goto error;                                         \
 		} else if (tmp == -2) { \
 			rc = -2;                                            \
+			break; \
 		} else {                                                \
 		  *(_p++) = tmp;                                        \
 		} \
 	} \
-	_i = 0;                                                     \
+	if (rc == 0) \
+		_i = 0;                                                 \
 } while (0)
 
 #define READ_LONG() VAL_OPEN{                                               \
 	static long _buf; static int _i = 0;                            \
+	rc = 0; \
 	if (_i == 0) _buf = 0; \
 	for (; _i<4; _i++) {                                            \
 		int tmp = LIBXSVF_HOST_GETBYTE();                           \
@@ -80,15 +84,18 @@ enum xsvf_cmd {
 			goto error;                                         \
 		} else if (tmp == -2) { \
 			rc = -2;                                                           \
+			break; \
 		} else { \
 			_buf = _buf << 8 | tmp;                                     \
 		} \
 	}                                                                   \
-	_i = 0; \
+	if (rc == 0) \
+		_i = 0;                                                 \
 	_buf;                                                               \
 }VAL_CLOSE
 
 #define READ_BYTE() VAL_OPEN{                                               \
+	rc = 0; \
 	int _tmp = LIBXSVF_HOST_GETBYTE();                                  \
 	if (_tmp == -1) {                                                     \
 		LIBXSVF_HOST_REPORT_ERROR("Unexpected EOF.");               \
@@ -246,27 +253,31 @@ error:
 
 int libxsvf_xsvf(struct libxsvf_host *h)
 {
-	int rc = 0;
-	int i, j;
+	static int rc = 0;
+	int i;
 
-	unsigned char *buf_tdi_data = (void*)0;
-	unsigned char *buf_tdo_data = (void*)0;
-	unsigned char *buf_tdo_mask = (void*)0;
-	unsigned char *buf_addr_mask = (void*)0;
-	unsigned char *buf_data_mask = (void*)0;
+	static unsigned char *buf_tdi_data = (void*)0;
+	static unsigned char *buf_tdo_data = (void*)0;
+	static unsigned char *buf_tdo_mask = (void*)0;
+	static unsigned char *buf_addr_mask = (void*)0;
+	static unsigned char *buf_data_mask = (void*)0;
 
-	long state_dr_size = 0;
-	long state_data_size = 0;
-	long state_runtest = 0;
-	unsigned char state_xendir = 0;
-	unsigned char state_xenddr = 0;
-	unsigned char state_retries = 0;
-	unsigned char cmd = 0;
+	static long state_dr_size = 0;
+	static long state_data_size = 0;
+	static long state_runtest = 0;
+	static unsigned char state_xendir = 0;
+	static unsigned char state_xenddr = 0;
+	static unsigned char state_retries = 0;
+	static char cmd = -2;
+	static char last_cmd = 0;
 
 	while (1)
 	{
-		unsigned char last_cmd = cmd;
-		cmd = LIBXSVF_HOST_GETBYTE();
+		if (cmd == -2) {
+			cmd = LIBXSVF_HOST_GETBYTE();
+			if (cmd == -2)
+				return -2;
+		}
 
 #define STATUS(_c) LIBXSVF_HOST_REPORT_STATUS("XSVF Command " #_c);
 
@@ -279,13 +290,24 @@ int libxsvf_xsvf(struct libxsvf_host *h)
 		case XTDOMASK: {
 			STATUS(XTDOMASK);
 			READ_BITS(buf_tdo_mask, state_dr_size);
+			if (rc == -2)
+				return -2;
 			break;
 		  }
 		case XSIR: {
+			static int length;
 			STATUS(XSIR);
-			int length = READ_BYTE();
+			if (rc >= -2) {
+				length = READ_BYTE();
+				if (length == -2)
+					return -2;
+			}
 			unsigned char buf[bits2bytes(length)];
 			READ_BITS(buf, length);
+			if (rc == -2) {
+				rc = -3;
+				return -2;
+			}
 			SHIFT_DATA(buf, (void*)0, (void*)0, length, LIBXSVF_TAP_IRSHIFT,
 					state_xendir ? LIBXSVF_TAP_IRPAUSE : LIBXSVF_TAP_IDLE,
 					state_runtest, state_retries);
@@ -294,6 +316,8 @@ int libxsvf_xsvf(struct libxsvf_host *h)
 		case XSDR: {
 			STATUS(XSDR);
 			READ_BITS(buf_tdi_data, state_dr_size);
+			if (rc == -2)
+				return -2;
 			SHIFT_DATA(buf_tdi_data, buf_tdo_data, buf_tdo_mask, state_dr_size, LIBXSVF_TAP_DRSHIFT,
 					state_xenddr ? LIBXSVF_TAP_DRPAUSE : LIBXSVF_TAP_IDLE,
 					state_runtest, state_retries);
@@ -302,16 +326,22 @@ int libxsvf_xsvf(struct libxsvf_host *h)
 		case XRUNTEST: {
 			STATUS(XRUNTEST);
 			state_runtest = READ_LONG();
+			if (rc == -2)
+				return -2;
 			break;
 		  }
 		case XREPEAT: {
 			STATUS(XREPEAT);
 			state_retries = READ_BYTE();
+			if (rc == -2)
+				return -2;
 			break;
 		  }
 		case XSDRSIZE: {
 			STATUS(XSDRSIZE);
 			state_dr_size = READ_LONG();
+			if (rc == -2)
+				return -2;
 			buf_tdi_data = LIBXSVF_HOST_REALLOC(buf_tdi_data, bits2bytes(state_dr_size), LIBXSVF_MEM_XSVF_TDI_DATA);
 			buf_tdo_data = LIBXSVF_HOST_REALLOC(buf_tdo_data, bits2bytes(state_dr_size), LIBXSVF_MEM_XSVF_TDO_DATA);
 			buf_tdo_mask = LIBXSVF_HOST_REALLOC(buf_tdo_mask, bits2bytes(state_dr_size), LIBXSVF_MEM_XSVF_TDO_MASK);
@@ -325,8 +355,16 @@ int libxsvf_xsvf(struct libxsvf_host *h)
 		  }
 		case XSDRTDO: {
 			STATUS(XSDRTDO);
-			READ_BITS(buf_tdi_data, state_dr_size);
+			if (rc >= -2) {
+				READ_BITS(buf_tdi_data, state_dr_size);
+				if (rc == -2)
+					return -2;
+			}
 			READ_BITS(buf_tdo_data, state_dr_size);
+			if (rc == -2) {
+				rc = -3;
+				return -2;
+			}
 			SHIFT_DATA(buf_tdi_data, buf_tdo_data, buf_tdo_mask, state_dr_size, LIBXSVF_TAP_DRSHIFT,
 					state_xenddr ? LIBXSVF_TAP_DRPAUSE : LIBXSVF_TAP_IDLE,
 					state_runtest, state_retries);
@@ -334,38 +372,66 @@ int libxsvf_xsvf(struct libxsvf_host *h)
 		  }
 		case XSETSDRMASKS: {
 			STATUS(XSETSDRMASKS);
-			READ_BITS(buf_addr_mask, state_dr_size);
+			if (rc >= -2) {
+				READ_BITS(buf_addr_mask, state_dr_size);
+				if (rc == -2)
+					return -2;
+			}
 			READ_BITS(buf_data_mask, state_dr_size);
+			if (rc == -2) {
+				rc = -3;
+				return -2;
+			}
 			state_data_size = 0;
 			for (i=0; i<state_dr_size; i++)
 				state_data_size += getbit(buf_data_mask, i);
 			break;
 		  }
 		case XSDRINC: {
+			static int i, j, num;
 			STATUS(XSDRINC);
-			READ_BITS(buf_tdi_data, state_dr_size);
-			int num = READ_BYTE();
+			if (rc >= -2) {
+				READ_BITS(buf_tdi_data, state_dr_size);
+				if (rc == -2)
+					return -2;
+			}
+			if (rc >= -3) {
+				num = READ_BYTE();
+				if (rc == -2) {
+					rc = -3;
+					return -2;
+				}
+			}
 			while (1) {
-				SHIFT_DATA(buf_tdi_data, buf_tdo_data, buf_tdo_mask, state_dr_size, LIBXSVF_TAP_DRSHIFT,
-						state_xenddr ? LIBXSVF_TAP_DRPAUSE : LIBXSVF_TAP_IDLE,
-						state_runtest, state_retries);
-				if (num-- <= 0)
-					break;
-				int carry = 1;
-				for (i=state_dr_size-1; i>=0; i--) {
-					if (getbit(buf_addr_mask, i) == 0)
-						continue;
-					if (getbit(buf_tdi_data, i)) {
-						setbit(buf_tdi_data, i, !carry);
-					} else {
-						setbit(buf_tdi_data, i, carry);
-						carry = 0;
+				if (rc == 0) {
+					SHIFT_DATA(buf_tdi_data, buf_tdo_data, buf_tdo_mask, state_dr_size, LIBXSVF_TAP_DRSHIFT,
+							state_xenddr ? LIBXSVF_TAP_DRPAUSE : LIBXSVF_TAP_IDLE,
+							state_runtest, state_retries);
+					if (num-- <= 0)
+						break;
+					int carry = 1;
+					for (i=state_dr_size-1; i>=0; i--) {
+						if (getbit(buf_addr_mask, i) == 0)
+							continue;
+						if (getbit(buf_tdi_data, i)) {
+							setbit(buf_tdi_data, i, !carry);
+						} else {
+							setbit(buf_tdi_data, i, carry);
+							carry = 0;
+						}
 					}
+					i = 0;
+					j = 0;
 				}
 				unsigned char this_byte = 0;
-				for (i=0, j=0; i<state_data_size; i++) {
-					if (i%8 == 0)
+				for (; i<state_data_size; i++) {
+					if (i%8 == 0) {
 						this_byte = READ_BYTE();
+						if (rc == -2) {
+							rc = -4;
+							return -2;
+						}
+					}
 					while (getbit(buf_data_mask, j) == 0)
 						j++;
 					setbit(buf_tdi_data, j++, getbit(&this_byte, i%8));
@@ -376,70 +442,126 @@ int libxsvf_xsvf(struct libxsvf_host *h)
 		case XSDRB: {
 			STATUS(XSDRB);
 			READ_BITS(buf_tdi_data, state_dr_size);
+			if (rc == -2)
+				return -2;
 			SHIFT_DATA(buf_tdi_data, (void*)0, (void*)0, state_dr_size, LIBXSVF_TAP_DRSHIFT, LIBXSVF_TAP_DRSHIFT, 0, 0);
 			break;
 		  }
 		case XSDRC: {
 			STATUS(XSDRC);
 			READ_BITS(buf_tdi_data, state_dr_size);
+			if (rc == -2)
+				return -2;
 			SHIFT_DATA(buf_tdi_data, (void*)0, (void*)0, state_dr_size, LIBXSVF_TAP_DRSHIFT, LIBXSVF_TAP_DRSHIFT, 0, 0);
 			break;
 		  }
 		case XSDRE: {
 			STATUS(XSDRE);
 			READ_BITS(buf_tdi_data, state_dr_size);
+			if (rc == -2)
+				return -2;
 			SHIFT_DATA(buf_tdi_data, (void*)0, (void*)0, state_dr_size, LIBXSVF_TAP_DRSHIFT,
 					state_xenddr ? LIBXSVF_TAP_DRPAUSE : LIBXSVF_TAP_IDLE, 0, 0);
 			break;
 		  }
 		case XSDRTDOB: {
 			STATUS(XSDRTDOB);
-			READ_BITS(buf_tdi_data, state_dr_size);
+			if (rc >= -2) {
+				READ_BITS(buf_tdi_data, state_dr_size);
+				if (rc == -2)
+					return -2;
+			}
 			READ_BITS(buf_tdo_data, state_dr_size);
+			if (rc == -2) {
+				rc = -3;
+				return -2;
+			}
 			SHIFT_DATA(buf_tdi_data, buf_tdo_data, (void*)0, state_dr_size, LIBXSVF_TAP_DRSHIFT, LIBXSVF_TAP_DRSHIFT, 0, 0);
 			break;
 		  }
 		case XSDRTDOC: {
 			STATUS(XSDRTDOC);
-			READ_BITS(buf_tdi_data, state_dr_size);
+			if (rc >= -2) {
+				READ_BITS(buf_tdi_data, state_dr_size);
+				if (rc == -2)
+					return -2;
+			}
 			READ_BITS(buf_tdo_data, state_dr_size);
+			if (rc == -2) {
+				rc = -3;
+				return -2;
+			}
 			SHIFT_DATA(buf_tdi_data, buf_tdo_data, (void*)0, state_dr_size, LIBXSVF_TAP_DRSHIFT, LIBXSVF_TAP_DRSHIFT, 0, 0);
 			break;
 		  }
 		case XSDRTDOE: {
 			STATUS(XSDRTDOE);
-			READ_BITS(buf_tdi_data, state_dr_size);
+			if (rc >= -2) {
+				READ_BITS(buf_tdi_data, state_dr_size);
+				if (rc == -2)
+					return -2;
+			}
 			READ_BITS(buf_tdo_data, state_dr_size);
+			if (rc == -2) {
+				rc = -3;
+				return -2;
+			}
 			SHIFT_DATA(buf_tdi_data, buf_tdo_data, (void*)0, state_dr_size, LIBXSVF_TAP_DRSHIFT,
 					state_xenddr ? LIBXSVF_TAP_DRPAUSE : LIBXSVF_TAP_IDLE, 0, 0);
 			break;
 		  }
 		case XSTATE: {
 			STATUS(XSTATE);
-			if (state_runtest && last_cmd == XRUNTEST) {
-				TAP(LIBXSVF_TAP_IDLE);
-				LIBXSVF_HOST_UDELAY(state_runtest, 0, state_runtest);
+			if (rc >=0) {
+				if (state_runtest && last_cmd == XRUNTEST) {
+					TAP(LIBXSVF_TAP_IDLE);
+					LIBXSVF_HOST_UDELAY(state_runtest, 0, state_runtest);
+				}
 			}
 			unsigned char state = READ_BYTE();
+			if (rc == -2)
+				return -2;
 			TAP(xilinx_tap(state));
 			break;
 		  }
 		case XENDIR: {
 			STATUS(XENDIR);
 			state_xendir = READ_BYTE();
+			if (rc == -2)
+				return -2;
 			break;
 		  }
 		case XENDDR: {
 			STATUS(XENDDR);
 			state_xenddr = READ_BYTE();
+			if (rc == -2)
+				return -2;
 			break;
 		  }
 		case XSIR2: {
+			static int length, length_low;
 			STATUS(XSIR2);
-			int length = READ_BYTE();
-			length = length << 8 | READ_BYTE();
+			if (rc >= -2) {
+				length = READ_BYTE();
+				if (rc == -2)
+					return -2;
+			}
+			if (rc >= -3) {
+				length_low = READ_BYTE();
+				if (rc == -2) {
+					rc = -3;
+					return -2;
+				}
+				length = length << 8 | length_low;
+			}
 			unsigned char buf[bits2bytes(length)];
 			READ_BITS(buf, length);
+			if (rc == -2) {
+				if (rc == -2) {
+					rc = -4;
+					return -2;
+				}
+			}
 			SHIFT_DATA(buf, (void*)0, (void*)0, length, LIBXSVF_TAP_IRSHIFT,
 					state_xendir ? LIBXSVF_TAP_IRPAUSE : LIBXSVF_TAP_IDLE,
 					state_runtest, state_retries);
@@ -450,32 +572,60 @@ int libxsvf_xsvf(struct libxsvf_host *h)
 			unsigned char this_byte;
 			do {
 				this_byte = READ_BYTE();
+				if (rc == -2)
+					return -2;
 			} while (this_byte);
 			break;
 		  }
 		case XWAIT:
 		case XWAITSTATE: {
+			static unsigned char state1, state2;
+			long usecs;
 			STATUS(XWAIT);
-			unsigned char state1 = READ_BYTE();
-			unsigned char state2 = READ_BYTE();
-			long usecs = READ_LONG();
-			TAP(xilinx_tap(state1));
-			LIBXSVF_HOST_UDELAY(usecs, 0, 0);
-			TAP(xilinx_tap(state2));
+			if (rc >= -2) {
+				state1 = READ_BYTE();
+				if (rc == -2)
+					return -2;
+			}
+			if (rc >= -3) {
+				state2 = READ_BYTE();
+				if (rc == -2) {
+					rc = -3;
+					return -2;
+				}
+			}
+			if (rc >= -4) {
+				usecs = READ_LONG();
+				if (rc == -2) {
+					rc = -4;
+					return -2;
+				}
+				TAP(xilinx_tap(state1));
+				LIBXSVF_HOST_UDELAY(usecs, 0, 0);
+				TAP(xilinx_tap(state2));
+			}
 			if (cmd==XWAITSTATE) {
 				READ_LONG();   /* XWAITSTATE has count, time arguments */
+				if (rc == -2) {
+					rc = -5;
+					return -2;
+				}
 			}
 			break;
 		  }
 		case XTRST: {
 			STATUS(XTRST);
 			READ_BYTE();  /* enum: ON, OFF, Z, ABSENT */
+			if (rc == -2)
+				return -2;
 			break;
 		}
 		default:
 			LIBXSVF_HOST_REPORT_ERROR("Unknown XSVF command.");
 			goto error;
 		}
+		last_cmd = cmd;
+		cmd = -2;
 	}
 
 error:
@@ -496,3 +646,9 @@ got_complete_command:
 	return rc;
 }
 
+int libxsvf_xsvf_stream(struct libxsvf_host *h)
+{
+	int rc;
+	while ((rc = libxsvf_xsvf(h)) == -2);
+	return rc;
+}

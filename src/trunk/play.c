@@ -46,6 +46,14 @@ int libxsvf_play(struct libxsvf_host *h, enum libxsvf_mode mode)
 #endif
 	}
 
+	if (mode == LIBXSVF_MODE_XSVF_STREAM) {
+#ifdef LIBXSVF_WITHOUT_XSVF
+		LIBXSVF_HOST_REPORT_ERROR("XSVF support in libxsvf is disabled.");
+#else
+		rc = libxsvf_xsvf_stream(h);
+#endif
+	}
+
 	if (mode == LIBXSVF_MODE_SCAN) {
 #ifdef LIBXSVF_WITHOUT_SCAN
 		LIBXSVF_HOST_REPORT_ERROR("SCAN support in libxsvf is disabled.");

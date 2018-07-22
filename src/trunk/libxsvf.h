@@ -25,6 +25,7 @@
 enum libxsvf_mode {
 	LIBXSVF_MODE_SVF = 1,
 	LIBXSVF_MODE_XSVF = 2,
+	LIBXSVF_MODE_XSVF_STREAM = 2,
 	LIBXSVF_MODE_SCAN = 3
 };
 
@@ -118,6 +119,7 @@ const char *libxsvf_mem2str(enum libxsvf_mem which);
 int libxsvf_svf(struct libxsvf_host *h);
 int libxsvf_svf_packet(struct libxsvf_host *h, int index, int final);
 int libxsvf_xsvf(struct libxsvf_host *h);
+int libxsvf_xsvf_stream(struct libxsvf_host *h);
 int libxsvf_scan(struct libxsvf_host *h);
 int libxsvf_tap_walk(struct libxsvf_host *, enum libxsvf_tap_state);
 

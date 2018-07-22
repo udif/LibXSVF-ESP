@@ -181,7 +181,8 @@ static int h_pulse_tck(struct libxsvf_host *h, int tms, int tdi, int tdo, int rm
 	}
 
 	if (u->verbose >= 4) {
-		printf("[TMS:%d, TDI:%d, TDO_ARG:%d, TDO_LINE:%d, RMASK:%d, RC:%d]\n", tms, tdi, tdo, line_tdo, rmask, rc);
+		//printf("[TMS:%d, TDI:%d, TDO_ARG:%d, TDO_LINE:%d, RMASK:%d, RC:%d]\n", tms, tdi, tdo, line_tdo, rmask, rc);
+		printf("[%d%d%d%d%d%d]\n", tms, tdi, tdo, line_tdo, rmask, rc);
 	}
 
 	u->clockcount++;
@@ -286,6 +287,22 @@ static int file_getbyte()
 	return fgetc(u.f);
 }
 
+#define STREAM_BUFFER_SIZE 1024
+static unsigned int stream_seed = 0;
+static int stream_getbyte()
+{
+	static int index = 0;
+	static int len = 0;
+	if (len == 0) {
+		len = rand_r(&stream_seed) % STREAM_BUFFER_SIZE;
+		//fprintf(stderr, "stream_getbyte: %8d %5d\n", index, len);
+		return -2;
+	}
+	len--;
+	index++;
+	return fgetc(u.f);
+}
+
 static void help()
 {
 	printf(
@@ -347,6 +364,13 @@ int main(int argc, char *argv[])
 				}
 			} else if (opt == 'S') {
 				if (libxsvf_svf_packet_play(&h) < 0) {
+					fprintf(stderr, "Error while playing %s file `%s'.\n", svf ? "SVF" : "XSVF", optarg);
+					rc = 1;
+				}
+			} else { // 'X'
+				u.file_getbyte = stream_getbyte;
+    			u.line = 1;
+				if (libxsvf_play(&h, LIBXSVF_MODE_XSVF_STREAM) < 0) {
 					fprintf(stderr, "Error while playing %s file `%s'.\n", svf ? "SVF" : "XSVF", optarg);
 					rc = 1;
 				}
@@ -435,22 +459,6 @@ int main(int argc, char *argv[])
 	}
 
 	return rc;
-}
-
-#define STREAM_BUFFER_SIZE 1024
-static unsigned int stream_seed = 0;
-static int stream_getbyte()
-{
-	static int index = 0;
-	static int len = 0;
-	if (len == 0) {
-		len = rand_r(&stream_seed) % STREAM_BUFFER_SIZE;
-		fprintf(stderr, "%8d %5d\n", index, len);
-		return -2;
-	}
-	len--;
-	index++;
-	return fgetc(u.f);
 }
 
 int libxsvf_svf_packet_play(struct libxsvf_host *h)
