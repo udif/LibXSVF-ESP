@@ -181,8 +181,8 @@ static int h_pulse_tck(struct libxsvf_host *h, int tms, int tdi, int tdo, int rm
 	}
 
 	if (u->verbose >= 4) {
-		//printf("[TMS:%d, TDI:%d, TDO_ARG:%d, TDO_LINE:%d, RMASK:%d, RC:%d]\n", tms, tdi, tdo, line_tdo, rmask, rc);
-		printf("[%d%d%d%d%d%d]\n", tms, tdi, tdo, line_tdo, rmask, rc);
+		printf("[TMS:%d, TDI:%d, TDO_ARG:%d, TDO_LINE:%d, RMASK:%d, RC:%d]\n", tms, tdi, tdo, line_tdo, rmask, rc);
+		//printf("[%d%d%d%d%d%d]\n", tms, tdi, tdo, line_tdo, rmask, rc);
 	}
 
 	u->clockcount++;
